@@ -138,9 +138,8 @@ export default function Home() {
   const [phase, setPhase] = useState('idle'); // idle | round1 | round2 | verdict | completed
   const [history, setHistory] = useState([]); // List of past feasibility reports
   
-  // Custom views & Export dropdown
+  // Custom views
   const [view, setView] = useState('landing');
-  const [showExportDropdown, setShowExportDropdown] = useState(false);
 
   // Auth states
   const [user, setUser] = useState(null);
@@ -365,8 +364,8 @@ export default function Home() {
     }
   };
 
-  // Advanced Export handler
-  const handleExport = (type) => {
+  // Export Report as Markdown
+  const exportReport = () => {
     if (!verdictText) return;
 
     const title = idea.split('\n')[0].slice(0, 50).trim() || 'idea';
@@ -419,255 +418,14 @@ export default function Home() {
       reportMd += `---\n\n`;
     });
 
-    if (type === 'md') {
-      const blob = new Blob([reportMd], { type: 'text/markdown' });
-      const url = URL.createObjectURL(blob);
-      const link = document.createElement('a');
-      link.href = url;
-      link.download = `cascade_feasibility_report_${sanitizedTitle}.md`;
-      link.click();
-      URL.revokeObjectURL(url);
-      addLog('System', 'Feasibility report exported successfully as Markdown.', 'success');
-    } else if (type === 'copy') {
-      navigator.clipboard.writeText(reportMd).then(() => {
-        addLog('System', 'Feasibility report copied to clipboard in Markdown format.', 'success');
-      }).catch(err => {
-        addLog('System', `Failed to copy report: ${err.message}`, 'error');
-      });
-    } else if (type === 'json') {
-      const reportJson = {
-        idea: idea,
-        timestamp: new Date().toISOString(),
-        verdict: verdictParsed.verdict,
-        confidence: verdictParsed.confidence,
-        summary: verdictParsed.summary,
-        consensus: verdictParsed.consensus,
-        contested: verdictParsed.contested,
-        questions: verdictParsed.questions,
-        pivots: verdictParsed.pivots,
-        agentResponses: Object.keys(agents).reduce((acc, id) => {
-          acc[id] = {
-            name: agents[id].name,
-            role: agents[id].role,
-            round1: agents[id].round1Content,
-            round2: agents[id].round2Content
-          };
-          return acc;
-        }, {})
-      };
-      const blob = new Blob([JSON.stringify(reportJson, null, 2)], { type: 'application/json' });
-      const url = URL.createObjectURL(blob);
-      const link = document.createElement('a');
-      link.href = url;
-      link.download = `cascade_feasibility_report_${sanitizedTitle}.json`;
-      link.click();
-      URL.revokeObjectURL(url);
-      addLog('System', 'Feasibility report exported successfully as JSON.', 'success');
-    } else if (type === 'pdf') {
-      const printWindow = window.open('', '_blank');
-      if (printWindow) {
-        printWindow.document.write(`
-          <html>
-            <head>
-              <title>Cascade Feasibility Report - ${title}</title>
-              <style>
-                body {
-                  font-family: system-ui, -apple-system, sans-serif;
-                  line-height: 1.6;
-                  color: #1e293b;
-                  padding: 40px;
-                  max-width: 800px;
-                  margin: 0 auto;
-                  background-color: #ffffff;
-                }
-                .header-meta {
-                  font-size: 13px;
-                  color: #64748b;
-                  margin-bottom: 20px;
-                  border-bottom: 1px solid #e2e8f0;
-                  padding-bottom: 15px;
-                }
-                h1 {
-                  font-size: 28px;
-                  color: #0f172a;
-                  margin-top: 0;
-                  margin-bottom: 10px;
-                }
-                h2 {
-                  font-size: 20px;
-                  color: #1e293b;
-                  border-bottom: 2px solid #f1f5f9;
-                  padding-bottom: 6px;
-                  margin-top: 40px;
-                }
-                h3 {
-                  font-size: 16px;
-                  color: #334155;
-                  margin-top: 25px;
-                  margin-bottom: 10px;
-                }
-                h4 {
-                  font-size: 14px;
-                  color: #475569;
-                  margin-top: 20px;
-                  margin-bottom: 8px;
-                  text-transform: uppercase;
-                  letter-spacing: 0.5px;
-                }
-                .verdict-banner {
-                  display: flex;
-                  align-items: center;
-                  gap: 15px;
-                  background: #f8fafc;
-                  border: 1px solid #e2e8f0;
-                  padding: 15px 20px;
-                  border-radius: 8px;
-                  margin-bottom: 25px;
-                }
-                .verdict-tag {
-                  font-weight: bold;
-                  font-size: 16px;
-                  padding: 4px 10px;
-                  border-radius: 4px;
-                  color: #ffffff;
-                }
-                .verdict-tag.go { background: #22c55e; }
-                .verdict-tag.pivot { background: #eab308; }
-                .verdict-tag.kill { background: #ef4444; }
-                .confidence-score {
-                  font-size: 15px;
-                  color: #475569;
-                  font-weight: 500;
-                }
-                blockquote {
-                  border-left: 4px solid #3b82f6;
-                  background: #f0fdf4;
-                  padding: 15px;
-                  margin: 20px 0;
-                  font-style: italic;
-                  color: #1e293b;
-                  border-radius: 0 6px 6px 0;
-                }
-                ul {
-                  padding-left: 20px;
-                  margin-bottom: 20px;
-                }
-                li {
-                  margin-bottom: 8px;
-                }
-                .agent-critique-box {
-                  background: #f8fafc;
-                  padding: 24px;
-                  border-radius: 12px;
-                  margin-bottom: 25px;
-                  border: 1px solid #e2e8f0;
-                  page-break-inside: avoid;
-                }
-                .agent-name {
-                  font-weight: 800;
-                  font-size: 18px;
-                  color: #0f172a;
-                  margin-bottom: 4px;
-                }
-                .agent-role {
-                  font-size: 13px;
-                  color: #64748b;
-                  margin-bottom: 20px;
-                }
-                .critique-text {
-                  white-space: pre-wrap;
-                  color: #334155;
-                  font-size: 13.5px;
-                  background: #ffffff;
-                  border: 1px solid #f1f5f9;
-                  padding: 15px;
-                  border-radius: 8px;
-                  margin-bottom: 15px;
-                }
-                @media print {
-                  body { padding: 0; }
-                  .agent-critique-box { page-break-inside: avoid; }
-                }
-              </style>
-            </head>
-            <body>
-              <div class="header-meta">
-                <strong>Cascade Feasibility Report</strong> | Generated on ${new Date().toLocaleString()}
-              </div>
-              
-              <h1>${title}</h1>
-              <p style="font-size: 15px; color: #475569; margin-top: 0; font-style: italic;">
-                Idea: "${idea.replace(/"/g, '&quot;')}"
-              </p>
-              
-              <div class="verdict-banner">
-                <span class="verdict-tag ${verdictParsed.verdict.toLowerCase()}">
-                  ${verdictParsed.verdict}
-                </span>
-                <span class="confidence-score">
-                  Confidence Score: <strong>${verdictParsed.confidence}%</strong>
-                </span>
-              </div>
-
-              ${verdictParsed.summary ? `<blockquote>"${verdictParsed.summary}"</blockquote>` : ''}
-
-              <h2>Synthesis Outcomes</h2>
-              
-              <h3>🤝 Consensus (Points of Agreement)</h3>
-              <ul>
-                ${verdictParsed.consensus.map(p => `<li>${p}</li>`).join('')}
-              </ul>
-
-              <h3>⚡ Contested Risks (Points of Debate)</h3>
-              <ul>
-                ${verdictParsed.contested.map(p => `<li>${p}</li>`).join('')}
-              </ul>
-
-              <h3>❓ Critical Questions to Answer</h3>
-              <ul>
-                ${verdictParsed.questions.map(p => `<li>${p}</li>`).join('')}
-              </ul>
-
-              ${verdictParsed.pivots.length > 0 ? `
-              <h3>🛠️ Suggested Pivots</h3>
-              <ul>
-                ${verdictParsed.pivots.map(p => `<li>${p}</li>`).join('')}
-              </ul>
-              ` : ''}
-
-              <h2>Detailed Agent Critiques</h2>
-              
-              ${Object.keys(agents).map(id => {
-                const a = agents[id];
-                return `
-                  <div class="agent-critique-box">
-                    <div class="agent-name">${a.emoji} ${a.name}</div>
-                    <div class="agent-role">${a.role}</div>
-                    
-                    <h4>Round 1: Independent Analysis</h4>
-                    <div class="critique-text">${a.round1Content || 'N/A'}</div>
-                    
-                    <h4>Round 2: Cross-Examination Rebuttal</h4>
-                    <div class="critique-text">${a.round2Content || 'N/A'}</div>
-                  </div>
-                `;
-              }).join('')}
-
-              <script>
-                window.onload = function() {
-                  window.print();
-                  setTimeout(() => { window.close(); }, 500);
-                }
-              </script>
-            </body>
-          </html>
-        `);
-        printWindow.document.close();
-        addLog('System', 'Feasibility report opened in print layout to save as PDF.', 'success');
-      } else {
-        addLog('System', 'Failed to open PDF export window. Pop-up blocker might be active.', 'error');
-      }
-    }
+    const blob = new Blob([reportMd], { type: 'text/markdown' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `cascade_feasibility_report_${sanitizedTitle}.md`;
+    link.click();
+    URL.revokeObjectURL(url);
+    addLog('System', 'Feasibility report exported successfully as Markdown.', 'success');
   };
 
   // Auth Submit handler
@@ -1616,41 +1374,17 @@ export default function Home() {
                       </div>
                       
                       <div className="verdict-badge-wrapper">
-                        {/* Export Dropdown and Retry buttons */}
+                        {/* Export and Retry buttons */}
                         {phase === 'completed' && (
                           <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
                             <button className="btn-secondary" onClick={retryVerdict} style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
                               <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 12a9 9 0 0 0-9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/><path d="M3 12a9 9 0 0 0 9 9 9.75 9.75 0 0 0 6.74-2.74L21 16"/><path d="M16 16h5v5"/></svg>
                               Retry Verdict
                             </button>
-                            
-                            {/* New Dropdown Export Container */}
-                            <div className="export-dropdown-container" style={{ position: 'relative' }}>
-                              <button 
-                                className="btn-secondary dropdown-trigger" 
-                                onClick={() => setShowExportDropdown(!showExportDropdown)}
-                                style={{ display: 'flex', alignItems: 'center', gap: '6px' }}
-                              >
-                                <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
-                                Export ▼
-                              </button>
-                              {showExportDropdown && (
-                                <div className="export-dropdown-menu">
-                                  <button onClick={() => { handleExport('md'); setShowExportDropdown(false); }}>
-                                    📄 Markdown (.md)
-                                  </button>
-                                  <button onClick={() => { handleExport('pdf'); setShowExportDropdown(false); }}>
-                                    📕 PDF (.pdf)
-                                  </button>
-                                  <button onClick={() => { handleExport('json'); setShowExportDropdown(false); }}>
-                                    ⚙️ JSON (.json)
-                                  </button>
-                                  <button onClick={() => { handleExport('copy'); setShowExportDropdown(false); }}>
-                                    📋 Copy Markdown
-                                  </button>
-                                </div>
-                              )}
-                            </div>
+                            <button className="btn-secondary" onClick={exportReport} style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                              <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+                              Export Report
+                            </button>
                           </div>
                         )}
 
