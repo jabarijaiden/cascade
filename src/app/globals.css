@@ -514,8 +514,28 @@ body {
 /* Card Header details */
 .agent-card-header {
   display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 10px;
+  width: 100%;
+}
+
+.agent-header-top {
+  display: flex;
   align-items: center;
   gap: 12px;
+  width: 100%;
+}
+
+.agent-header-bottom {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+}
+
+.agent-header-bottom .agent-status-badge {
+  margin-left: 0;
 }
 
 .agent-avatar {

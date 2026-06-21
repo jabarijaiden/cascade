@@ -1176,12 +1176,14 @@ export default function Home() {
               return (
                 <div key={agent.id} className={`agent-card ${agent.id} ${isAnalyzing ? 'active' : ''}`}>
                   <div className="agent-card-header">
-                     <div className="agent-avatar">{agent.emoji}</div>
-                     <div className="agent-meta">
-                       <span className="agent-name">{agent.name}</span>
-                       <span className="agent-role">{agent.role}</span>
+                     <div className="agent-header-top">
+                       <div className="agent-avatar">{agent.emoji}</div>
+                       <div className="agent-meta">
+                         <span className="agent-name">{agent.name}</span>
+                         <span className="agent-role">{agent.role}</span>
+                       </div>
                      </div>
-                     <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                     <div className="agent-header-bottom">
                        {(phase === 'completed' || data.status === 'error') && (
                          <button
                            className="btn-retry-icon"
