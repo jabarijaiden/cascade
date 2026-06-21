@@ -138,11 +138,16 @@ export default function Home() {
   const [phase, setPhase] = useState('idle'); // idle | round1 | round2 | verdict | completed
   const [history, setHistory] = useState([]); // List of past feasibility reports
   
+  // Custom views & Export dropdown
+  const [view, setView] = useState('landing');
+  const [showExportDropdown, setShowExportDropdown] = useState(false);
+
   // Auth states
   const [user, setUser] = useState(null);
   const [showAuthModal, setShowAuthModal] = useState(false);
   const [authEmail, setAuthEmail] = useState('');
   const [authPassword, setAuthPassword] = useState('');
+  const [authName, setAuthName] = useState('');
   const [isSignUp, setIsSignUp] = useState(false);
   const [authError, setAuthError] = useState('');
   const [authLoading, setAuthLoading] = useState(false);
@@ -196,6 +201,7 @@ export default function Home() {
       supabase.auth.getSession().then(({ data: { session } }) => {
         if (session) {
           setUser(session.user);
+          setView('workspace');
           addLog('Auth', `Signed in as ${session.user.email}`, 'success');
           loadCloudHistory(session.user.id);
         } else {
@@ -207,6 +213,7 @@ export default function Home() {
       const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
         if (session) {
           setUser(session.user);
+          setView('workspace');
           loadCloudHistory(session.user.id);
         } else {
           setUser(null);
@@ -358,72 +365,315 @@ export default function Home() {
     }
   };
 
-  // Export report as markdown file
-  const exportReport = () => {
+  // Advanced Export handler
+  const handleExport = (type) => {
     if (!verdictText) return;
 
-    const title = idea.split('\n')[0].slice(0, 50).trim();
-    let report = `# Cascade Feasibility Report: ${title}\n\n`;
-    report += `**Generated on**: ${new Date().toLocaleString()}\n`;
-    report += `**Startup Idea**: *"${idea}"*\n\n`;
-    report += `## 🏆 Overall Verdict: ${verdictParsed.verdict === 'GO' ? '🟢 GO' : verdictParsed.verdict === 'PIVOT' ? '🟡 PIVOT' : '🔴 KILL'} (Confidence: ${verdictParsed.confidence}%)\n\n`;
+    const title = idea.split('\n')[0].slice(0, 50).trim() || 'idea';
+    const sanitizedTitle = title.toLowerCase().replace(/[^a-z0-9]+/g, '_');
+
+    // Generate Markdown report text
+    let reportMd = `# Cascade Feasibility Report: ${title}\n\n`;
+    reportMd += `**Generated on**: ${new Date().toLocaleString()}\n`;
+    reportMd += `**Startup Idea**: *"${idea}"*\n\n`;
+    reportMd += `## 🏆 Overall Verdict: ${verdictParsed.verdict === 'GO' ? '🟢 GO' : verdictParsed.verdict === 'PIVOT' ? '🟡 PIVOT' : '🔴 KILL'} (Confidence: ${verdictParsed.confidence}%)\n\n`;
 
     if (verdictParsed.summary) {
-      report += `> "${verdictParsed.summary}"\n\n`;
+      reportMd += `> "${verdictParsed.summary}"\n\n`;
     }
 
-    report += `### 🤝 Consensus (Points of Agreement)\n`;
+    reportMd += `### 🤝 Consensus (Points of Agreement)\n`;
     verdictParsed.consensus.forEach(point => {
-      report += `- ${point}\n`;
+      reportMd += `- ${point}\n`;
     });
-    report += `\n`;
+    reportMd += `\n`;
 
-    report += `### ⚡ Contested Risks (Points of Debate)\n`;
+    reportMd += `### ⚡ Contested Risks (Points of Debate)\n`;
     verdictParsed.contested.forEach(point => {
-      report += `- ${point}\n`;
+      reportMd += `- ${point}\n`;
     });
-    report += `\n`;
+    reportMd += `\n`;
 
-    report += `### ❓ Critical Questions to Answer\n`;
+    reportMd += `### ❓ Critical Questions to Answer\n`;
     verdictParsed.questions.forEach(point => {
-      report += `- ${point}\n`;
+      reportMd += `- ${point}\n`;
     });
-    report += `\n`;
+    reportMd += `\n`;
 
     if (verdictParsed.pivots.length > 0) {
-      report += `### 🛠️ Suggested Pivots\n`;
+      reportMd += `### 🛠️ Suggested Pivots\n`;
       verdictParsed.pivots.forEach(point => {
-        report += `- ${point}\n`;
+        reportMd += `- ${point}\n`;
       });
-      report += `\n`;
+      reportMd += `\n`;
     }
 
-    report += `## 💬 Detailed Agent Critiques\n\n`;
-
+    reportMd += `## 💬 Detailed Agent Critiques\n\n`;
     Object.keys(agents).forEach(id => {
       const a = agents[id];
-      report += `### ${a.emoji} ${a.name} — ${a.role}\n\n`;
-      report += `#### Round 1: Independent Analysis\n\n`;
-      report += `${a.round1Content || 'N/A'}\n\n`;
-      report += `#### Round 2: Cross-Examination Rebuttal\n\n`;
-      report += `${a.round2Content || 'N/A'}\n\n`;
-      report += `---\n\n`;
+      reportMd += `### ${a.emoji} ${a.name} — ${a.role}\n\n`;
+      reportMd += `#### Round 1: Independent Analysis\n\n`;
+      reportMd += `${a.round1Content || 'N/A'}\n\n`;
+      reportMd += `#### Round 2: Cross-Examination Rebuttal\n\n`;
+      reportMd += `${a.round2Content || 'N/A'}\n\n`;
+      reportMd += `---\n\n`;
     });
 
-    const blob = new Blob([report], { type: 'text/markdown' });
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement('a');
-    link.href = url;
-    link.download = `cascade_feasibility_report_${title.toLowerCase().replace(/[^a-z0-9]+/g, '_')}.md`;
-    link.click();
-    URL.revokeObjectURL(url);
-    addLog('System', 'Feasibility report exported successfully as Markdown.', 'success');
+    if (type === 'md') {
+      const blob = new Blob([reportMd], { type: 'text/markdown' });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = `cascade_feasibility_report_${sanitizedTitle}.md`;
+      link.click();
+      URL.revokeObjectURL(url);
+      addLog('System', 'Feasibility report exported successfully as Markdown.', 'success');
+    } else if (type === 'copy') {
+      navigator.clipboard.writeText(reportMd).then(() => {
+        addLog('System', 'Feasibility report copied to clipboard in Markdown format.', 'success');
+      }).catch(err => {
+        addLog('System', `Failed to copy report: ${err.message}`, 'error');
+      });
+    } else if (type === 'json') {
+      const reportJson = {
+        idea: idea,
+        timestamp: new Date().toISOString(),
+        verdict: verdictParsed.verdict,
+        confidence: verdictParsed.confidence,
+        summary: verdictParsed.summary,
+        consensus: verdictParsed.consensus,
+        contested: verdictParsed.contested,
+        questions: verdictParsed.questions,
+        pivots: verdictParsed.pivots,
+        agentResponses: Object.keys(agents).reduce((acc, id) => {
+          acc[id] = {
+            name: agents[id].name,
+            role: agents[id].role,
+            round1: agents[id].round1Content,
+            round2: agents[id].round2Content
+          };
+          return acc;
+        }, {})
+      };
+      const blob = new Blob([JSON.stringify(reportJson, null, 2)], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = `cascade_feasibility_report_${sanitizedTitle}.json`;
+      link.click();
+      URL.revokeObjectURL(url);
+      addLog('System', 'Feasibility report exported successfully as JSON.', 'success');
+    } else if (type === 'pdf') {
+      const printWindow = window.open('', '_blank');
+      if (printWindow) {
+        printWindow.document.write(`
+          <html>
+            <head>
+              <title>Cascade Feasibility Report - ${title}</title>
+              <style>
+                body {
+                  font-family: system-ui, -apple-system, sans-serif;
+                  line-height: 1.6;
+                  color: #1e293b;
+                  padding: 40px;
+                  max-width: 800px;
+                  margin: 0 auto;
+                  background-color: #ffffff;
+                }
+                .header-meta {
+                  font-size: 13px;
+                  color: #64748b;
+                  margin-bottom: 20px;
+                  border-bottom: 1px solid #e2e8f0;
+                  padding-bottom: 15px;
+                }
+                h1 {
+                  font-size: 28px;
+                  color: #0f172a;
+                  margin-top: 0;
+                  margin-bottom: 10px;
+                }
+                h2 {
+                  font-size: 20px;
+                  color: #1e293b;
+                  border-bottom: 2px solid #f1f5f9;
+                  padding-bottom: 6px;
+                  margin-top: 40px;
+                }
+                h3 {
+                  font-size: 16px;
+                  color: #334155;
+                  margin-top: 25px;
+                  margin-bottom: 10px;
+                }
+                h4 {
+                  font-size: 14px;
+                  color: #475569;
+                  margin-top: 20px;
+                  margin-bottom: 8px;
+                  text-transform: uppercase;
+                  letter-spacing: 0.5px;
+                }
+                .verdict-banner {
+                  display: flex;
+                  align-items: center;
+                  gap: 15px;
+                  background: #f8fafc;
+                  border: 1px solid #e2e8f0;
+                  padding: 15px 20px;
+                  border-radius: 8px;
+                  margin-bottom: 25px;
+                }
+                .verdict-tag {
+                  font-weight: bold;
+                  font-size: 16px;
+                  padding: 4px 10px;
+                  border-radius: 4px;
+                  color: #ffffff;
+                }
+                .verdict-tag.go { background: #22c55e; }
+                .verdict-tag.pivot { background: #eab308; }
+                .verdict-tag.kill { background: #ef4444; }
+                .confidence-score {
+                  font-size: 15px;
+                  color: #475569;
+                  font-weight: 500;
+                }
+                blockquote {
+                  border-left: 4px solid #3b82f6;
+                  background: #f0fdf4;
+                  padding: 15px;
+                  margin: 20px 0;
+                  font-style: italic;
+                  color: #1e293b;
+                  border-radius: 0 6px 6px 0;
+                }
+                ul {
+                  padding-left: 20px;
+                  margin-bottom: 20px;
+                }
+                li {
+                  margin-bottom: 8px;
+                }
+                .agent-critique-box {
+                  background: #f8fafc;
+                  padding: 24px;
+                  border-radius: 12px;
+                  margin-bottom: 25px;
+                  border: 1px solid #e2e8f0;
+                  page-break-inside: avoid;
+                }
+                .agent-name {
+                  font-weight: 800;
+                  font-size: 18px;
+                  color: #0f172a;
+                  margin-bottom: 4px;
+                }
+                .agent-role {
+                  font-size: 13px;
+                  color: #64748b;
+                  margin-bottom: 20px;
+                }
+                .critique-text {
+                  white-space: pre-wrap;
+                  color: #334155;
+                  font-size: 13.5px;
+                  background: #ffffff;
+                  border: 1px solid #f1f5f9;
+                  padding: 15px;
+                  border-radius: 8px;
+                  margin-bottom: 15px;
+                }
+                @media print {
+                  body { padding: 0; }
+                  .agent-critique-box { page-break-inside: avoid; }
+                }
+              </style>
+            </head>
+            <body>
+              <div class="header-meta">
+                <strong>Cascade Feasibility Report</strong> | Generated on ${new Date().toLocaleString()}
+              </div>
+              
+              <h1>${title}</h1>
+              <p style="font-size: 15px; color: #475569; margin-top: 0; font-style: italic;">
+                Idea: "${idea.replace(/"/g, '&quot;')}"
+              </p>
+              
+              <div class="verdict-banner">
+                <span class="verdict-tag ${verdictParsed.verdict.toLowerCase()}">
+                  ${verdictParsed.verdict}
+                </span>
+                <span class="confidence-score">
+                  Confidence Score: <strong>${verdictParsed.confidence}%</strong>
+                </span>
+              </div>
+
+              ${verdictParsed.summary ? `<blockquote>"${verdictParsed.summary}"</blockquote>` : ''}
+
+              <h2>Synthesis Outcomes</h2>
+              
+              <h3>🤝 Consensus (Points of Agreement)</h3>
+              <ul>
+                ${verdictParsed.consensus.map(p => `<li>${p}</li>`).join('')}
+              </ul>
+
+              <h3>⚡ Contested Risks (Points of Debate)</h3>
+              <ul>
+                ${verdictParsed.contested.map(p => `<li>${p}</li>`).join('')}
+              </ul>
+
+              <h3>❓ Critical Questions to Answer</h3>
+              <ul>
+                ${verdictParsed.questions.map(p => `<li>${p}</li>`).join('')}
+              </ul>
+
+              ${verdictParsed.pivots.length > 0 ? `
+              <h3>🛠️ Suggested Pivots</h3>
+              <ul>
+                ${verdictParsed.pivots.map(p => `<li>${p}</li>`).join('')}
+              </ul>
+              ` : ''}
+
+              <h2>Detailed Agent Critiques</h2>
+              
+              ${Object.keys(agents).map(id => {
+                const a = agents[id];
+                return `
+                  <div class="agent-critique-box">
+                    <div class="agent-name">${a.emoji} ${a.name}</div>
+                    <div class="agent-role">${a.role}</div>
+                    
+                    <h4>Round 1: Independent Analysis</h4>
+                    <div class="critique-text">${a.round1Content || 'N/A'}</div>
+                    
+                    <h4>Round 2: Cross-Examination Rebuttal</h4>
+                    <div class="critique-text">${a.round2Content || 'N/A'}</div>
+                  </div>
+                `;
+              }).join('')}
+
+              <script>
+                window.onload = function() {
+                  window.print();
+                  setTimeout(() => { window.close(); }, 500);
+                }
+              </script>
+            </body>
+          </html>
+        `);
+        printWindow.document.close();
+        addLog('System', 'Feasibility report opened in print layout to save as PDF.', 'success');
+      } else {
+        addLog('System', 'Failed to open PDF export window. Pop-up blocker might be active.', 'error');
+      }
+    }
   };
 
   // Auth Submit handler
   const handleAuthSubmit = async (e) => {
     e.preventDefault();
-    if (!authEmail || !authPassword) {
+    if (!authEmail || !authPassword || (isSignUp && !authName)) {
       setAuthError('Please fill all fields');
       return;
     }
@@ -435,7 +685,12 @@ export default function Home() {
       if (isSignUp) {
         const { error } = await supabase.auth.signUp({
           email: authEmail,
-          password: authPassword
+          password: authPassword,
+          options: {
+            data: {
+              full_name: authName
+            }
+          }
         });
         if (error) throw error;
         addLog('Auth', 'Sign up successful! Please check your email for confirmation.', 'success');
@@ -451,6 +706,8 @@ export default function Home() {
       setShowAuthModal(false);
       setAuthEmail('');
       setAuthPassword('');
+      setAuthName('');
+      setView('workspace');
     } catch (error) {
       setAuthError(error.message);
       addLog('Auth', `Authentication failed: ${error.message}`, 'error');
@@ -907,49 +1164,600 @@ export default function Home() {
   };
 
   return (
-    <div className="app-container">
-      {/* App Header Section */}
-      <header className="app-header">
-        <div className="logo-section">
-          <div className="logo-icon loader-glow">C</div>
-          <div>
-            <h1>Cascade</h1>
-            <p style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>Multi-Agent Idea Validator</p>
-          </div>
-          <span>BETA</span>
-        </div>
+    <div className="app-wrapper">
+      {view === 'landing' ? (
+        <div className="landing-page-container">
+          {/* Decorative background grids/glows */}
+          <div className="landing-glow cyan"></div>
+          <div className="landing-glow purple"></div>
+          <div className="landing-glow pink"></div>
+          <div className="landing-grid-bg"></div>
 
-        {/* Database Mode and Cloud Sync */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: '16px', marginLeft: 'auto' }}>
-          <div className="user-profile-badge">
-            <span style={{ fontSize: '11px', fontWeight: 600, color: 'var(--text-muted)' }}>
-              {supabaseConnected ? 'DATABASE: ONLINE' : 'DATABASE: OFFLINE'}
-            </span>
-            {supabaseConnected && (
-              <>
-                <span style={{ color: 'rgba(255,255,255,0.15)' }}>|</span>
-                {user ? (
-                  <>
-                    <span className="user-email">{user.email}</span>
-                    <button className="btn-signout" onClick={handleSignOut}>Sign Out</button>
-                  </>
-                ) : (
+          {/* Landing Header */}
+          <header className="landing-header">
+            <div className="logo-section">
+              <div className="logo-icon loader-glow">C</div>
+              <div>
+                <h1>Cascade</h1>
+                <p style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>AI Debate Arena</p>
+              </div>
+            </div>
+            <div className="landing-header-actions">
+              {user ? (
+                <button className="btn-primary" onClick={() => setView('workspace')}>
+                  Enter Arena
+                </button>
+              ) : (
+                <button 
+                  className="btn-secondary" 
+                  onClick={() => {
+                    setIsSignUp(false);
+                    setAuthError('');
+                    setShowAuthModal(true);
+                  }}
+                >
+                  Log In
+                </button>
+              )}
+            </div>
+          </header>
+
+          {/* Hero Section */}
+          <section className="landing-hero">
+            <div className="hero-badge">ADVERSARIAL STARTUP TESTING</div>
+            <h1>
+              Forge Your Ideas in the <br />
+              <span className="hero-gradient">Multi-Agent AI Arena</span>
+            </h1>
+            <p className="hero-subtitle">
+              Skip the polite, generic feedback. Launch five specialized AI experts that argue, challenge each other, and stress-test your concept from every professional angle.
+            </p>
+
+            <div className="hero-cta-group">
+              {user ? (
+                <button className="btn-primary btn-hero" onClick={() => setView('workspace')}>
+                  Go to Workspace <span className="arrow">→</span>
+                </button>
+              ) : (
+                <>
                   <button 
-                    className="auth-switch-btn" 
+                    className="btn-primary btn-hero" 
                     onClick={() => {
-                      setIsSignUp(false);
+                      setIsSignUp(true);
                       setAuthError('');
                       setShowAuthModal(true);
                     }}
                   >
-                    Cloud Sync Login
+                    Get Started For Free <span className="arrow">→</span>
+                  </button>
+                  <button className="btn-secondary btn-hero" onClick={() => setView('workspace')}>
+                    Try as Guest
+                  </button>
+                </>
+              )}
+            </div>
+          </section>
+
+          {/* Interactive Feature: The Agents Panel */}
+          <section className="landing-features">
+            <h2>Meet the AI Panel</h2>
+            <p className="section-subtitle">Five distinct personas clashing in real-time to locate the breaking points of your business model.</p>
+            
+            <div className="features-grid">
+              <div className="feature-card skeptic">
+                <div className="feature-icon">🔴</div>
+                <h3>The Skeptic</h3>
+                <p>Serial entrepreneur focused purely on risk, user friction, and failure modes. The ultimate realist.</p>
+              </div>
+              <div className="feature-card investor">
+                <div className="feature-icon">🟢</div>
+                <h3>The Investor</h3>
+                <p>VC partner assessing venture viability, market size (TAM), unit economics, and growth flywheels.</p>
+              </div>
+              <div className="feature-card engineer">
+                <div className="feature-icon">🔵</div>
+                <h3>The Engineer</h3>
+                <p>Staff architect judging development complexity, timeline viability, tech stack choices, and scale bottlenecks.</p>
+              </div>
+              <div className="feature-card customer">
+                <div className="feature-icon">🟡</div>
+                <h3>The Customer</h3>
+                <p>Your target persona demanding immediate value, analyzing cost-utility, and evaluating adoption convenience.</p>
+              </div>
+              <div className="feature-card competitor">
+                <div className="feature-icon">🟣</div>
+                <h3>The Competitor</h3>
+                <p>An aggressive market incumbent plotting defensive maneuvers to replicate and crush your startup in months.</p>
+              </div>
+            </div>
+          </section>
+
+          {/* How it works details */}
+          <section className="landing-steps">
+            <h2>The Process</h2>
+            <div className="steps-container">
+              <div className="step-item">
+                <div className="step-number">1</div>
+                <h4>Pitch Your Concept</h4>
+                <p>Input your startup title, audience, and revenue model in a brief description.</p>
+              </div>
+              <div className="step-item">
+                <div className="step-number">2</div>
+                <h4>Real-Time Debate</h4>
+                <p>Watch agents compile independent critiques and then argue against one another in Round 2.</p>
+              </div>
+              <div className="step-item">
+                <div className="step-number">3</div>
+                <h4>Structured Verdict</h4>
+                <p>Receive a synthesized score (GO, PIVOT, or KILL) with consensus, contested risks, and pivots.</p>
+              </div>
+            </div>
+          </section>
+
+          {/* Footer */}
+          <footer className="landing-footer">
+            <p>&copy; {new Date().getFullYear()} Cascade AI. All rights reserved.</p>
+          </footer>
+        </div>
+      ) : (
+        <div className="app-container">
+          {/* App Header Section */}
+          <header className="app-header">
+            <div className="logo-section" onClick={() => setView('landing')} style={{ cursor: 'pointer' }}>
+              <div className="logo-icon loader-glow">C</div>
+              <div>
+                <h1>Cascade</h1>
+                <p style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>Multi-Agent Idea Validator</p>
+              </div>
+              <span>BETA</span>
+            </div>
+
+            {/* Database Mode and Cloud Sync */}
+            <div style={{ display: 'flex', alignItems: 'center', gap: '16px', marginLeft: 'auto' }}>
+              <div className="user-profile-badge">
+                <span style={{ fontSize: '11px', fontWeight: 600, color: 'var(--text-muted)' }}>
+                  {supabaseConnected ? 'DATABASE: ONLINE' : 'DATABASE: OFFLINE'}
+                </span>
+                {supabaseConnected && (
+                  <>
+                    <span style={{ color: 'rgba(255,255,255,0.15)' }}>|</span>
+                    {user ? (
+                      <>
+                        <span className="user-email">{user.user_metadata?.full_name || user.email}</span>
+                        <button className="btn-signout" onClick={handleSignOut}>Sign Out</button>
+                      </>
+                    ) : (
+                      <button 
+                        className="auth-switch-btn" 
+                        onClick={() => {
+                          setIsSignUp(false);
+                          setAuthError('');
+                          setShowAuthModal(true);
+                        }}
+                      >
+                        Cloud Sync Login
+                      </button>
+                    )}
+                  </>
+                )}
+              </div>
+            </div>
+          </header>
+
+          {/* Main Workspace layout */}
+          <div className="workspace-grid">
+            
+            {/* Left Column Controls */}
+            <aside className="control-panel">
+              <div className="panel-card">
+                <h2 className="panel-title"><SparklesIcon /> Validate Idea</h2>
+                <textarea
+                  className="idea-textarea"
+                  placeholder="Describe your startup idea in detail... (e.g. what is the product, who is it for, how does it make money?)"
+                  value={idea}
+                  onChange={(e) => setIdea(e.target.value)}
+                  disabled={phase !== 'idle' && phase !== 'completed'}
+                  maxLength={2000}
+                />
+                <div className="char-counter">{idea.length}/2000</div>
+                
+                {phase !== 'idle' && phase !== 'completed' ? (
+                  <button
+                    className="btn-danger"
+                    onClick={stopDebate}
+                    style={{ 
+                      background: 'var(--color-skeptic)', 
+                      color: '#fff', 
+                      border: 'none', 
+                      width: '100%', 
+                      display: 'flex', 
+                      alignItems: 'center', 
+                      justifyContent: 'center', 
+                      gap: '8px', 
+                      padding: '12px', 
+                      borderRadius: '8px', 
+                      cursor: 'pointer', 
+                      fontWeight: 'bold',
+                      boxShadow: '0 0 15px rgba(255, 71, 87, 0.4)'
+                    }}
+                  >
+                    <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><rect x="4" y="4" width="16" height="16" rx="2" ry="2"/></svg>
+                    Stop Debate
+                  </button>
+                ) : (
+                  <button
+                    className="btn-primary"
+                    onClick={startDebate}
+                    disabled={!idea.trim()}
+                  >
+                    <PlayIcon /> Launch Arena Debate
                   </button>
                 )}
-              </>
-            )}
+              </div>
+
+              {/* Quick-start Templates */}
+              <div className="panel-card">
+                <h2 className="panel-title"><IdeaIcon /> Sample Ideas</h2>
+                <div className="templates-list">
+                  {TEMPLATES.map((t, idx) => (
+                    <button
+                      key={idx}
+                      className="template-btn"
+                      onClick={() => applyTemplate(t.description)}
+                      disabled={phase !== 'idle' && phase !== 'completed'}
+                    >
+                      <span>{t.title}</span>
+                      <span className="template-arrow">→</span>
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* Saved Reports History */}
+              {history.length > 0 && (
+                <div className="panel-card">
+                  <h2 className="panel-title">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>
+                    Saved Reports
+                  </h2>
+                  <div className="history-list">
+                    {history.map((item) => (
+                      <div
+                        key={item.id}
+                        className="history-item"
+                        onClick={() => loadHistoryItem(item)}
+                      >
+                        <div className="history-meta">
+                          <span className="history-idea-text">{item.idea}</span>
+                          <span className="history-date">{item.timestamp}</span>
+                        </div>
+                        <div className="history-badge-row">
+                          <span className={`history-badge ${item.verdictParsed.verdict.toLowerCase()}`}>
+                            {item.verdictParsed.verdict}
+                          </span>
+                          <button
+                            className="btn-history-delete"
+                            onClick={(e) => deleteHistoryItem(e, item.id)}
+                            title="Delete validation report"
+                          >
+                            <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M3 6h18"/><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"/><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"/></svg>
+                          </button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </aside>
+
+            {/* Right Column Workspace */}
+            <main className="debate-arena">
+              
+              {/* Phase progress visualizer */}
+              <div className="arena-header-status">
+                <span style={{ fontWeight: 700, fontSize: '14px', fontFamily: 'var(--font-heading)' }}>
+                  Debate Arena
+                </span>
+                <div className="phase-indicators">
+                  <div className={`phase-indicator ${phase === 'round1' ? 'active' : phase !== 'idle' ? 'completed' : ''}`}>
+                    <span className="phase-indicator-dot"></span>
+                    <span>R1: Independent</span>
+                  </div>
+                  <div className={`phase-indicator ${phase === 'round2' ? 'active' : (phase === 'verdict' || phase === 'completed') ? 'completed' : ''}`}>
+                    <span className="phase-indicator-dot"></span>
+                    <span>R2: Cross-Exam</span>
+                  </div>
+                  <div className={`phase-indicator ${phase === 'verdict' ? 'active' : phase === 'completed' ? 'completed' : ''}`}>
+                    <span className="phase-indicator-dot"></span>
+                    <span>Synthesis</span>
+                  </div>
+                </div>
+              </div>
+
+              {/* Agents Board */}
+              <div className="agents-grid">
+                {AGENTS.map((agent) => {
+                  const data = agents?.[agent.id] || {
+                    status: 'sleeping',
+                    round1Content: '',
+                    round2Content: '',
+                    activeTab: 'round1'
+                  };
+                  const isAnalyzing = data.status === 'analyzing';
+                  const hasR1 = !!data.round1Content;
+                  const hasR2 = !!data.round2Content;
+
+                  return (
+                    <div key={agent.id} className={`agent-card ${agent.id} ${isAnalyzing ? 'active' : ''}`}>
+                      <div className="agent-card-header">
+                         <div className="agent-header-top">
+                           <div className="agent-avatar">{agent.emoji}</div>
+                           <div className="agent-meta">
+                             <span className="agent-name">{agent.name}</span>
+                             <span className="agent-role">{agent.role}</span>
+                           </div>
+                         </div>
+                         <div className="agent-header-bottom">
+                           {(phase === 'completed' || data.status === 'error') && (
+                             <button
+                               className="btn-retry-icon"
+                               onClick={() => retryAgent(agent.id, data.activeTab === 'round1' ? 'Round 1' : 'Round 2')}
+                               title={`Retry ${data.activeTab === 'round1' ? 'Round 1' : 'Round 2'}`}
+                               style={{
+                                 background: 'rgba(255,255,255,0.08)',
+                                 border: '1px solid rgba(255,255,255,0.15)',
+                                 borderRadius: '4px',
+                                 color: 'var(--text-muted)',
+                                 cursor: 'pointer',
+                                 display: 'flex',
+                                 alignItems: 'center',
+                                 justifyContent: 'center',
+                                 padding: '4px 8px',
+                                 fontSize: '11px',
+                                 fontWeight: '600',
+                                 transition: 'all 0.2s',
+                                 gap: '4px'
+                               }}
+                               onMouseEnter={(e) => {
+                                 e.currentTarget.style.background = 'rgba(255,255,255,0.15)';
+                                 e.currentTarget.style.color = '#fff';
+                               }}
+                               onMouseLeave={(e) => {
+                                 e.currentTarget.style.background = 'rgba(255,255,255,0.08)';
+                                 e.currentTarget.style.color = 'var(--text-muted)';
+                               }}
+                             >
+                               <svg xmlns="http://www.w3.org/2000/svg" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 12a9 9 0 0 0-9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/><path d="M3 12a9 9 0 0 0 9 9 9.75 9.75 0 0 0 6.74-2.74L21 16"/><path d="M16 16h5v5"/></svg>
+                               Retry
+                             </button>
+                           )}
+                           <span className={`agent-status-badge ${data.status}`}>
+                             {isAnalyzing ? 'Analyzing...' : data.status === 'complete' ? 'Completed' : data.status === 'error' ? 'Error' : 'Sleeping'}
+                           </span>
+                         </div>
+                      </div>
+
+                      <div className="agent-tabs-container">
+                        <div className="agent-tabs-header">
+                          <button
+                            className={`agent-tab-btn ${data.activeTab === 'round1' ? 'active' : ''}`}
+                            onClick={() => setAgents(prev => ({
+                              ...prev,
+                              [agent.id]: { ...prev[agent.id], activeTab: 'round1' }
+                            }))}
+                            disabled={!hasR1}
+                          >
+                            Round 1
+                          </button>
+                          <button
+                            className={`agent-tab-btn ${data.activeTab === 'round2' ? 'active' : ''}`}
+                            onClick={() => setAgents(prev => ({
+                              ...prev,
+                              [agent.id]: { ...prev[agent.id], activeTab: 'round2' }
+                            }))}
+                            disabled={!hasR2}
+                          >
+                            Round 2 Rebuttal
+                          </button>
+                        </div>
+
+                        <div className="agent-content-body">
+                          {data.activeTab === 'round1' ? (
+                            data.round1Content ? (
+                              <div style={{ whiteSpace: 'pre-wrap' }}>{renderFormattedText(data.round1Content)}</div>
+                            ) : isAnalyzing ? (
+                              <div className="typing-indicator">
+                                <span className="typing-dot"></span>
+                                <span className="typing-dot"></span>
+                                <span className="typing-dot"></span>
+                              </div>
+                            ) : (
+                              <div className="agent-empty-state">
+                                <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>
+                                <span>Awaiting first critique...</span>
+                              </div>
+                            )
+                          ) : (
+                            data.round2Content ? (
+                              <div style={{ whiteSpace: 'pre-wrap' }}>{renderFormattedText(data.round2Content)}</div>
+                            ) : isAnalyzing ? (
+                              <div className="typing-indicator">
+                                <span className="typing-dot"></span>
+                                <span className="typing-dot"></span>
+                                <span className="typing-dot"></span>
+                              </div>
+                            ) : (
+                              <div className="agent-empty-state">
+                                <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>
+                                <span>Awaiting cross-examination...</span>
+                              </div>
+                            )
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+
+              {/* Synthesized Verdict Output Panel */}
+              <AnimatePresence>
+                {(verdictText || phase === 'verdict' || phase === 'completed') && (
+                  <motion.div
+                    initial={{ opacity: 0, y: 30 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    exit={{ opacity: 0, y: 30 }}
+                    className={`verdict-card ${verdictParsed.verdict.toLowerCase()}`}
+                  >
+                    <div className="verdict-header">
+                      <div className="verdict-title-section">
+                        <h2>Arena Verdict</h2>
+                        <p style={{ fontSize: '13px', color: 'var(--text-secondary)' }}>Synthesized adversarial output</p>
+                      </div>
+                      
+                      <div className="verdict-badge-wrapper">
+                        {/* Export Dropdown and Retry buttons */}
+                        {phase === 'completed' && (
+                          <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+                            <button className="btn-secondary" onClick={retryVerdict} style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                              <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 12a9 9 0 0 0-9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/><path d="M3 12a9 9 0 0 0 9 9 9.75 9.75 0 0 0 6.74-2.74L21 16"/><path d="M16 16h5v5"/></svg>
+                              Retry Verdict
+                            </button>
+                            
+                            {/* New Dropdown Export Container */}
+                            <div className="export-dropdown-container" style={{ position: 'relative' }}>
+                              <button 
+                                className="btn-secondary dropdown-trigger" 
+                                onClick={() => setShowExportDropdown(!showExportDropdown)}
+                                style={{ display: 'flex', alignItems: 'center', gap: '6px' }}
+                              >
+                                <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+                                Export ▼
+                              </button>
+                              {showExportDropdown && (
+                                <div className="export-dropdown-menu">
+                                  <button onClick={() => { handleExport('md'); setShowExportDropdown(false); }}>
+                                    📄 Markdown (.md)
+                                  </button>
+                                  <button onClick={() => { handleExport('pdf'); setShowExportDropdown(false); }}>
+                                    📕 PDF (.pdf)
+                                  </button>
+                                  <button onClick={() => { handleExport('json'); setShowExportDropdown(false); }}>
+                                    ⚙️ JSON (.json)
+                                  </button>
+                                  <button onClick={() => { handleExport('copy'); setShowExportDropdown(false); }}>
+                                    📋 Copy Markdown
+                                  </button>
+                                </div>
+                              )}
+                            </div>
+                          </div>
+                        )}
+
+                        {/* Confidence Meter */}
+                        {verdictParsed.confidence > 0 && (
+                          <div className="confidence-gauge-container">
+                            <div className="confidence-label">
+                              <span>Confidence</span>
+                              <span>{verdictParsed.confidence}%</span>
+                            </div>
+                            <div className="confidence-bar-bg">
+                              <div
+                                className="confidence-bar-fill"
+                                style={{ width: `${verdictParsed.confidence}%` }}
+                              ></div>
+                            </div>
+                          </div>
+                        )}
+
+                        <div className={`verdict-badge ${verdictParsed.verdict.toLowerCase()}`}>
+                          {verdictParsed.verdict === 'GO' && '🟢 GO'}
+                          {verdictParsed.verdict === 'PIVOT' && '🟡 PIVOT'}
+                          {verdictParsed.verdict === 'KILL' && '🔴 KILL'}
+                          {verdictParsed.verdict === 'PENDING' && '⌛ Synthesizing...'}
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Structured Verdict Sections */}
+                    {verdictText ? (
+                      <div className="verdict-body-grid">
+                        
+                        {verdictParsed.summary && (
+                          <div className="verdict-one-liner">
+                            "{renderFormattedText(verdictParsed.summary)}"
+                          </div>
+                        )}
+
+                        {verdictParsed.consensus.length > 0 && (
+                          <div className="verdict-section-block">
+                            <h3 className="verdict-section-title">Consensus (Agreed Points)</h3>
+                            <ul className="verdict-list">
+                              {verdictParsed.consensus.map((item, idx) => (
+                                <li key={idx}><span>{renderFormattedText(item)}</span></li>
+                              ))}
+                            </ul>
+                          </div>
+                        )}
+
+                        {verdictParsed.contested.length > 0 && (
+                          <div className="verdict-section-block">
+                            <h3 className="verdict-section-title">Contested (Key Debated Risks)</h3>
+                            <ul className="verdict-list">
+                              {verdictParsed.contested.map((item, idx) => (
+                                <li key={idx}><span>{renderFormattedText(item)}</span></li>
+                              ))}
+                            </ul>
+                          </div>
+                        )}
+
+                        {verdictParsed.questions.length > 0 && (
+                          <div className="verdict-section-block">
+                            <h3 className="verdict-section-title">Critical Questions to Answer</h3>
+                            <ul className="verdict-list">
+                              {verdictParsed.questions.map((item, idx) => (
+                                <li key={idx}><span>{renderFormattedText(item)}</span></li>
+                              ))}
+                            </ul>
+                          </div>
+                        )}
+
+                        {verdictParsed.pivots.length > 0 && (
+                          <div className="verdict-section-block">
+                            <h3 className="verdict-section-title">Suggested Pivots</h3>
+                            <ul className="verdict-list">
+                              {verdictParsed.pivots.map((item, idx) => (
+                                <li key={idx}><span>{renderFormattedText(item)}</span></li>
+                              ))}
+                            </ul>
+                          </div>
+                        )}
+
+                        {/* Fallback to raw streamed text while generating */}
+                        {(!verdictParsed.consensus.length && !verdictParsed.contested.length && !verdictParsed.questions.length) && (
+                          <div style={{ gridColumn: '1 / -1', whiteSpace: 'pre-wrap', fontSize: '14px', lineHeight: 1.6 }}>
+                            {renderFormattedText(verdictText)}
+                          </div>
+                        )}
+                      </div>
+                    ) : (
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '12px', color: 'var(--text-muted)' }}>
+                        <div className="typing-indicator" style={{ padding: 0 }}>
+                          <span className="typing-dot"></span>
+                          <span className="typing-dot"></span>
+                          <span className="typing-dot"></span>
+                        </div>
+                        <span>Synthesizer is compiling debate transcripts...</span>
+                      </div>
+                    )}
+                  </motion.div>
+                )}
+              </AnimatePresence>
+
+            </main>
           </div>
         </div>
-      </header>
+      )}
 
       {/* Auth Modal Overlay */}
       {showAuthModal && (
@@ -961,6 +1769,20 @@ export default function Home() {
             </div>
             
             <form onSubmit={handleAuthSubmit} className="auth-form">
+              {isSignUp && (
+                <div className="form-group">
+                  <label className="form-label">Full Name</label>
+                  <input
+                    type="text"
+                    className="form-input"
+                    value={authName}
+                    onChange={e => setAuthName(e.target.value)}
+                    placeholder="John Doe"
+                    required
+                  />
+                </div>
+              )}
+
               <div className="form-group">
                 <label className="form-label">Email Address</label>
                 <input
@@ -1007,417 +1829,6 @@ export default function Home() {
           </div>
         </div>
       )}
-
-      {/* Main Workspace layout */}
-      <div className="workspace-grid">
-        
-        {/* Left Column Controls */}
-        <aside className="control-panel">
-          <div className="panel-card">
-            <h2 className="panel-title"><SparklesIcon /> Validate Idea</h2>
-            <textarea
-              className="idea-textarea"
-              placeholder="Describe your startup idea in detail... (e.g. what is the product, who is it for, how does it make money?)"
-              value={idea}
-              onChange={(e) => setIdea(e.target.value)}
-              disabled={phase !== 'idle' && phase !== 'completed'}
-              maxLength={2000}
-            />
-            <div className="char-counter">{idea.length}/2000</div>
-            
-            {phase !== 'idle' && phase !== 'completed' ? (
-              <button
-                className="btn-danger"
-                onClick={stopDebate}
-                style={{ 
-                  background: 'var(--color-skeptic)', 
-                  color: '#fff', 
-                  border: 'none', 
-                  width: '100%', 
-                  display: 'flex', 
-                  alignItems: 'center', 
-                  justifyContent: 'center', 
-                  gap: '8px', 
-                  padding: '12px', 
-                  borderRadius: '8px', 
-                  cursor: 'pointer', 
-                  fontWeight: 'bold',
-                  boxShadow: '0 0 15px rgba(255, 71, 87, 0.4)'
-                }}
-              >
-                <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><rect x="4" y="4" width="16" height="16" rx="2" ry="2"/></svg>
-                Stop Debate
-              </button>
-            ) : (
-              <button
-                className="btn-primary"
-                onClick={startDebate}
-                disabled={!idea.trim()}
-              >
-                <PlayIcon /> Launch Arena Debate
-              </button>
-            )}
-          </div>
-
-          {/* Quick-start Templates */}
-          <div className="panel-card">
-            <h2 className="panel-title"><IdeaIcon /> Sample Ideas</h2>
-            <div className="templates-list">
-              {TEMPLATES.map((t, idx) => (
-                <button
-                  key={idx}
-                  className="template-btn"
-                  onClick={() => applyTemplate(t.description)}
-                  disabled={phase !== 'idle' && phase !== 'completed'}
-                >
-                  <span>{t.title}</span>
-                  <span className="template-arrow">→</span>
-                </button>
-              ))}
-            </div>
-          </div>
-
-          {/* Saved Reports History */}
-          {history.length > 0 && (
-            <div className="panel-card">
-              <h2 className="panel-title">
-                <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>
-                Saved Reports
-              </h2>
-              <div className="history-list">
-                {history.map((item) => (
-                  <div
-                    key={item.id}
-                    className="history-item"
-                    onClick={() => loadHistoryItem(item)}
-                  >
-                    <div className="history-meta">
-                      <span className="history-idea-text">{item.idea}</span>
-                      <span className="history-date">{item.timestamp}</span>
-                    </div>
-                    <div className="history-badge-row">
-                      <span className={`history-badge ${item.verdictParsed.verdict.toLowerCase()}`}>
-                        {item.verdictParsed.verdict}
-                      </span>
-                      <button
-                        className="history-delete-btn"
-                        onClick={(e) => deleteHistoryItem(e, item.id)}
-                        title="Delete report"
-                      >
-                        <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/><line x1="10" y1="11" x2="10" y2="17"/><line x1="14" y1="11" x2="14" y2="17"/></svg>
-                      </button>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </div>
-          )}
-
-          {/* Real-time Status Terminal logs */}
-          <div className="panel-card">
-            <h2 className="panel-title"><TerminalIcon /> Arena Terminal</h2>
-            <div className="debate-terminal">
-              {statusLogs.length === 0 ? (
-                <span className="terminal-line" style={{ color: 'var(--text-muted)' }}>
-                  Arena idle. Submitting an idea begins the debate.
-                </span>
-              ) : (
-                statusLogs.map((log, index) => (
-                  <div key={index} className="terminal-line">
-                    <span className="terminal-timestamp">[{log.timestamp}]</span>
-                    <span className={`terminal-${log.type}`}>
-                      <strong>{log.sender}:</strong> {log.text}
-                    </span>
-                  </div>
-                ))
-              )}
-              <div ref={logsEndRef} />
-            </div>
-          </div>
-        </aside>
-
-        {/* Right Column Debate Space */}
-        <main className="debate-arena">
-          
-          {/* Phase progress visualizer */}
-          <div className="arena-header-status">
-            <span style={{ fontWeight: 700, fontSize: '14px', fontFamily: 'var(--font-heading)' }}>
-              Debate Arena
-            </span>
-            <div className="phase-indicators">
-              <div className={`phase-indicator ${phase === 'round1' ? 'active' : phase !== 'idle' ? 'completed' : ''}`}>
-                <span className="phase-indicator-dot"></span>
-                <span>R1: Independent</span>
-              </div>
-              <div className={`phase-indicator ${phase === 'round2' ? 'active' : (phase === 'verdict' || phase === 'completed') ? 'completed' : ''}`}>
-                <span className="phase-indicator-dot"></span>
-                <span>R2: Cross-Exam</span>
-              </div>
-              <div className={`phase-indicator ${phase === 'verdict' ? 'active' : phase === 'completed' ? 'completed' : ''}`}>
-                <span className="phase-indicator-dot"></span>
-                <span>Synthesis</span>
-              </div>
-            </div>
-          </div>
-
-          {/* Agents Board */}
-          <div className="agents-grid">
-            {AGENTS.map((agent) => {
-              const data = agents?.[agent.id] || {
-                status: 'sleeping',
-                round1Content: '',
-                round2Content: '',
-                activeTab: 'round1'
-              };
-              const isAnalyzing = data.status === 'analyzing';
-              const hasR1 = !!data.round1Content;
-              const hasR2 = !!data.round2Content;
-
-              return (
-                <div key={agent.id} className={`agent-card ${agent.id} ${isAnalyzing ? 'active' : ''}`}>
-                  <div className="agent-card-header">
-                     <div className="agent-header-top">
-                       <div className="agent-avatar">{agent.emoji}</div>
-                       <div className="agent-meta">
-                         <span className="agent-name">{agent.name}</span>
-                         <span className="agent-role">{agent.role}</span>
-                       </div>
-                     </div>
-                     <div className="agent-header-bottom">
-                       {(phase === 'completed' || data.status === 'error') && (
-                         <button
-                           className="btn-retry-icon"
-                           onClick={() => retryAgent(agent.id, data.activeTab === 'round1' ? 'Round 1' : 'Round 2')}
-                           title={`Retry ${data.activeTab === 'round1' ? 'Round 1' : 'Round 2'}`}
-                           style={{
-                             background: 'rgba(255,255,255,0.08)',
-                             border: '1px solid rgba(255,255,255,0.15)',
-                             borderRadius: '4px',
-                             color: 'var(--text-muted)',
-                             cursor: 'pointer',
-                             display: 'flex',
-                             alignItems: 'center',
-                             justifyContent: 'center',
-                             padding: '4px 8px',
-                             fontSize: '11px',
-                             fontWeight: '600',
-                             transition: 'all 0.2s',
-                             gap: '4px'
-                           }}
-                           onMouseEnter={(e) => {
-                             e.currentTarget.style.background = 'rgba(255,255,255,0.15)';
-                             e.currentTarget.style.color = '#fff';
-                           }}
-                           onMouseLeave={(e) => {
-                             e.currentTarget.style.background = 'rgba(255,255,255,0.08)';
-                             e.currentTarget.style.color = 'var(--text-muted)';
-                           }}
-                         >
-                           <svg xmlns="http://www.w3.org/2000/svg" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 12a9 9 0 0 0-9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/><path d="M3 12a9 9 0 0 0 9 9 9.75 9.75 0 0 0 6.74-2.74L21 16"/><path d="M16 16h5v5"/></svg>
-                           Retry
-                         </button>
-                       )}
-                       <span className={`agent-status-badge ${data.status}`}>
-                         {isAnalyzing ? 'Analyzing...' : data.status === 'complete' ? 'Completed' : data.status === 'error' ? 'Error' : 'Sleeping'}
-                       </span>
-                     </div>
-                  </div>
-
-                  <div className="agent-tabs-container">
-                    <div className="agent-tabs-header">
-                      <button
-                        className={`agent-tab-btn ${data.activeTab === 'round1' ? 'active' : ''}`}
-                        onClick={() => setAgents(prev => ({
-                          ...prev,
-                          [agent.id]: { ...prev[agent.id], activeTab: 'round1' }
-                        }))}
-                        disabled={!hasR1}
-                      >
-                        Round 1
-                      </button>
-                      <button
-                        className={`agent-tab-btn ${data.activeTab === 'round2' ? 'active' : ''}`}
-                        onClick={() => setAgents(prev => ({
-                          ...prev,
-                          [agent.id]: { ...prev[agent.id], activeTab: 'round2' }
-                        }))}
-                        disabled={!hasR2}
-                      >
-                        Round 2 Rebuttal
-                      </button>
-                    </div>
-
-                    <div className="agent-content-body">
-                      {data.activeTab === 'round1' ? (
-                        data.round1Content ? (
-                          <div style={{ whiteSpace: 'pre-wrap' }}>{renderFormattedText(data.round1Content)}</div>
-                        ) : isAnalyzing ? (
-                          <div className="typing-indicator">
-                            <span className="typing-dot"></span>
-                            <span className="typing-dot"></span>
-                            <span className="typing-dot"></span>
-                          </div>
-                        ) : (
-                          <div className="agent-empty-state">
-                            <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>
-                            <span>Awaiting first critique...</span>
-                          </div>
-                        )
-                      ) : (
-                        data.round2Content ? (
-                          <div style={{ whiteSpace: 'pre-wrap' }}>{renderFormattedText(data.round2Content)}</div>
-                        ) : isAnalyzing ? (
-                          <div className="typing-indicator">
-                            <span className="typing-dot"></span>
-                            <span className="typing-dot"></span>
-                            <span className="typing-dot"></span>
-                          </div>
-                        ) : (
-                          <div className="agent-empty-state">
-                            <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>
-                            <span>Awaiting cross-examination...</span>
-                          </div>
-                        )
-                      )}
-                    </div>
-                  </div>
-                </div>
-              );
-            })}
-          </div>
-
-          {/* Synthesized Verdict Output Panel */}
-          <AnimatePresence>
-            {(verdictText || phase === 'verdict' || phase === 'completed') && (
-              <motion.div
-                initial={{ opacity: 0, y: 30 }}
-                animate={{ opacity: 1, y: 0 }}
-                exit={{ opacity: 0, y: 30 }}
-                className={`verdict-card ${verdictParsed.verdict.toLowerCase()}`}
-              >
-                <div className="verdict-header">
-                  <div className="verdict-title-section">
-                    <h2>Arena Verdict</h2>
-                    <p style={{ fontSize: '13px', color: 'var(--text-secondary)' }}>Synthesized adversarial output</p>
-                  </div>
-                  
-                  <div className="verdict-badge-wrapper">
-                    {/* Export Feasibility Report Button */}
-                    {phase === 'completed' && (
-                      <div style={{ display: 'flex', gap: '8px' }}>
-                        <button className="btn-secondary" onClick={retryVerdict} style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                          <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 12a9 9 0 0 0-9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/><path d="M3 12a9 9 0 0 0 9 9 9.75 9.75 0 0 0 6.74-2.74L21 16"/><path d="M16 16h5v5"/></svg>
-                          Retry Verdict
-                        </button>
-                        <button className="btn-secondary" onClick={exportReport} style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                          <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
-                          Export Report
-                        </button>
-                      </div>
-                    )}
-
-                    {/* Confidence Meter */}
-                    {verdictParsed.confidence > 0 && (
-                      <div className="confidence-gauge-container">
-                        <div className="confidence-label">
-                          <span>Confidence</span>
-                          <span>{verdictParsed.confidence}%</span>
-                        </div>
-                        <div className="confidence-bar-bg">
-                          <div
-                            className="confidence-bar-fill"
-                            style={{ width: `${verdictParsed.confidence}%` }}
-                          ></div>
-                        </div>
-                      </div>
-                    )}
-
-                    <div className={`verdict-badge ${verdictParsed.verdict.toLowerCase()}`}>
-                      {verdictParsed.verdict === 'GO' && '🟢 GO'}
-                      {verdictParsed.verdict === 'PIVOT' && '🟡 PIVOT'}
-                      {verdictParsed.verdict === 'KILL' && '🔴 KILL'}
-                      {verdictParsed.verdict === 'PENDING' && '⌛ Synthesizing...'}
-                    </div>
-                  </div>
-                </div>
-
-                {/* Structured Verdict Sections */}
-                {verdictText ? (
-                  <div className="verdict-body-grid">
-                    
-                    {verdictParsed.summary && (
-                      <div className="verdict-one-liner">
-                        "{renderFormattedText(verdictParsed.summary)}"
-                      </div>
-                    )}
-
-                    {verdictParsed.consensus.length > 0 && (
-                      <div className="verdict-section-block">
-                        <h3 className="verdict-section-title">Consensus (Agreed Points)</h3>
-                        <ul className="verdict-list">
-                          {verdictParsed.consensus.map((item, idx) => (
-                            <li key={idx}><span>{renderFormattedText(item)}</span></li>
-                          ))}
-                        </ul>
-                      </div>
-                    )}
-
-                    {verdictParsed.contested.length > 0 && (
-                      <div className="verdict-section-block">
-                        <h3 className="verdict-section-title">Contested (Key Debated Risks)</h3>
-                        <ul className="verdict-list">
-                          {verdictParsed.contested.map((item, idx) => (
-                            <li key={idx}><span>{renderFormattedText(item)}</span></li>
-                          ))}
-                        </ul>
-                      </div>
-                    )}
-
-                    {verdictParsed.questions.length > 0 && (
-                      <div className="verdict-section-block">
-                        <h3 className="verdict-section-title">Critical Questions to Answer</h3>
-                        <ul className="verdict-list">
-                          {verdictParsed.questions.map((item, idx) => (
-                            <li key={idx}><span>{renderFormattedText(item)}</span></li>
-                          ))}
-                        </ul>
-                      </div>
-                    )}
-
-                    {verdictParsed.pivots.length > 0 && (
-                      <div className="verdict-section-block">
-                        <h3 className="verdict-section-title">Suggested Pivots</h3>
-                        <ul className="verdict-list">
-                          {verdictParsed.pivots.map((item, idx) => (
-                            <li key={idx}><span>{renderFormattedText(item)}</span></li>
-                          ))}
-                        </ul>
-                      </div>
-                    )}
-
-                    {/* Fallback to raw streamed text while generating */}
-                    {(!verdictParsed.consensus.length && !verdictParsed.contested.length && !verdictParsed.questions.length) && (
-                      <div style={{ gridColumn: '1 / -1', whiteSpace: 'pre-wrap', fontSize: '14px', lineHeight: 1.6 }}>
-                        {renderFormattedText(verdictText)}
-                      </div>
-                    )}
-                  </div>
-                ) : (
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '12px', color: 'var(--text-muted)' }}>
-                    <div className="typing-indicator" style={{ padding: 0 }}>
-                      <span className="typing-dot"></span>
-                      <span className="typing-dot"></span>
-                      <span className="typing-dot"></span>
-                    </div>
-                    <span>Synthesizer is compiling debate transcripts...</span>
-                  </div>
-                )}
-              </motion.div>
-            )}
-          </AnimatePresence>
-
-        </main>
-      </div>
     </div>
   );
 }
